@@ -1,56 +1,68 @@
 FROM ubuntu:latest
 
-MAINTAINER Oleg 'helgie' Lymarchuk (oleg.lymarchuk@icloud.com)
+ENV CHROME="\
+  https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb"
 
-ARG LATESTSELENIUM
-ARG LATESTCHROMEDRIVER
+ENV CHROMEDRIVER="\
+https://chromedriver.storage.googleapis.com/2.31/chromedriver_linux64.zip"
 
-ENV SELENIUM /opt/selenium.jar
-ENV CHROMEDRIVER /opt/chromedriver
-ENV PATH "$PATH:/opt"
+ENV PACKAGES="\
+  curl \
+  ffmpeg \
+  fonts-liberation \
+  gconf-service \
+  git \
+  libappindicator1 \
+  libatk1.0-0 \
+  libcairo2 \
+  libcups2 \
+  libgconf-2-4 \
+  libgdk-pixbuf2.0-0 \
+  libgtk-3-0 \
+  libnspr4 \
+  libnss3 \
+  libpango-1.0-0 \
+  libxss1 \
+  lsb-release \
+  python3.5 \
+  scrot \
+  tmux \
+  unzip \
+  wget \
+  xdg-utils \
+  xvfb \
+"
 
-WORKDIR /tests
+ENV REQUIREMENTS="\
+  pyScreeze \
+  pytest \
+  selenium \
+"
 
 RUN \
-  sed -i 's/# \(.*multiverse$\)/\1/g' /etc/apt/sources.list && \
-  apt-get -y upgrade && \
-  apt-get update && \
-  apt-get install -y \
-  build-essential curl default-jre ffmpeg firefox git python3.5 python3.5-dev \
-  python3-mysqldb python3.5-tk scrot sudo tmux wget unzip xvfb
+apt-get update && \
+apt-get install -y ${PACKAGES} && \
+apt-get autoremove
+
 RUN \
-  wget -q https://bootstrap.pypa.io/get-pip.py -O /tmp/get-pip.py && \
+  curl https://bootstrap.pypa.io/get-pip.py -o /tmp/get-pip.py -s && \
   update-alternatives --install /usr/bin/python python /usr/bin/python3.5 1 && \
-  python /tmp/get-pip.py
-# RUN \
-#   wget -q ${LATESTSELENIUM} -P /opt && \
-#   mv /opt/* ${SELENIUM}
-# RUN \
-#   wget -q ${LATESTCHROMEDRIVER} -P /opt && \
-#   unzip -q /opt/ch* -d /opt/ && \
-#   rm /opt/*zip && \
-  # chmod +x ${CHROMEDRIVER}
+  python /tmp/get-pip.py && pip install $REQUIREMENTS
+
 RUN \
-  wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | apt-key \
-  add - ; sh -c \ 'echo "deb http://dl.google.com/linux/chrome/deb/ stable main" >> /etc/apt/sources.list.d/google-chrome.list' ; \
-  apt-get update ; exit 0
+  curl ${CHROME} -o chrome.deb -s ; \
+  dpkg -i chrome.deb && \
+  rm chrome.deb
+
 RUN \
-  apt-get install -y google-chrome-stable
-COPY \
-  tests/requirements.txt /tests/requirements.txt
-RUN \
-  Xvfb :1 -screen 0 800x600x16 &> xvfb.log && \
-  export DISPLAY=:1.0 && \
-  touch /root/.Xauthority && \
-  pip install image && \
-  pip install python3-xlib && \
-  pip install bpython && \
-  pip install -r /tests/requirements.txt ; \
-  mkdir /Screenshots ; \
-  chmod 777 -R /Screenshots
+  curl -s -o chromedriver.zip ${CHROMEDRIVER} ; \
+  unzip -q chromedriver -d /usr/local/bin && rm chromedriver.zip ;
 
 CMD \
-  Xvfb :2 -listen tcp -screen 0 1366x1000x24+32 -fbdir /var/tmp&  \
-  export DISPLAY=:2.0 && \
-  tmux new-session -d -s pyTestRecording "ffmpeg -f x11grab -video_size 1366x1000 -i 127.0.0.1:2 -codec:v libx264 -r 12 Screenshots/out$(date +"%I_%M_%S").mkv" && \
-  py.test -s $TEST
+  Xvfb :$(hostname -i | sed s/.*\0.//) -listen tcp -screen 0 1280x720x24+32 \
+  -fbdir /var/tmp& \
+  export DISPLAY=:$(hostname -i | sed s/.*\0.//) ; \
+  ffmpeg -f x11grab -video_size 1280x720 -i 127.0.0.1${DISPLAY} -codec:v \
+  libx264 -r 12 /tests/Screenshots/$(hostname)$(date +"%I_%M_%S").mkv > \
+  /dev/null 2>/dev/null & py.test -s $TEST ; sleep 5  
+
